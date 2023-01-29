@@ -5,19 +5,22 @@
 
 char adminstr[1024];
 char error[255];
-Handle knivhelg = null;
+Handle taserhelg = null;
+
+ConVar adminPointsEnabled;
 
 public Plugin myinfo = {
 	name = "OSTaserHelg",
 	author = "Pintuz",
-	description = "OldSwedes Taser helg plugin",
+	description = "OldSwedes Taser en admin helg plugin",
 	version = "0.01",
 	url = "https://github.com/Pintuzoft/OSTaserHelg"
 }
 
 public void OnPluginStart ( ) {
     HookEvent ( "player_death", Event_PlayerDeath );
-    RegConsoleCmd ( "sm_ttop", Command_TaserTop, "Shows the top 10 taser kills" );
+    adminPointsEnabled = CreateConVar ( "ostaserhelg_admin_points_enabled", "1", "Enable admin points" );
+    RegConsoleCmd ( "sm_ktop", Command_KnifeTop, "Shows the top 10 knife kills" );
     AutoExecConfig ( true, "ostaserhelg" );
 }
 
@@ -40,6 +43,8 @@ public void Event_PlayerDeath ( Event event, const char[] name, bool dontBroadca
     char weapon[32];
     bool isAttackerAdmin;
     bool isVictimAdmin;
+    bool teamKill;
+    int points = 5;
 
     if ( ! playerIsReal ( victim ) || 
          ! playerIsReal ( attacker ) ||
@@ -63,25 +68,48 @@ public void Event_PlayerDeath ( Event event, const char[] name, bool dontBroadca
     GetClientAuthId ( victim, AuthId_Steam2, victim_authid, sizeof ( victim_authid ) );
     GetClientAuthId ( attacker, AuthId_Steam2, attacker_authid, sizeof ( attacker_authid ) );
     
-    if ( ! isValidSteamID ( victim_authid ) || ! isValidSteamID ( attacker_authid ) ) {
-        return;
+ 
+    //if ( ! isValidSteamID ( victim_authid ) || ! isValidSteamID ( attacker_authid ) ) {
+    //    return;
+    //}
+
+    teamKill = isTeamKill ( attacker, victim );
+
+    if ( adminPointsEnabled.BoolValue && isPlayerAdmin ( victim_authid ) ) {
+        points = 10;
     }
 
     isAttackerAdmin = isPlayerAdmin ( attacker_authid );
     isVictimAdmin = isPlayerAdmin ( victim_authid );
 
-    addKnifeEvent ( attacker_name, attacker_authid, victim_name, victim_authid, isVictimAdmin );
-    incPoints ( attacker_name, attacker_authid, isVictimAdmin );
-    decPoints ( victim_name, victim_authid, isVictimAdmin );
+
     
-    if ( isAttackerAdmin && isVictimAdmin ) {
-        PrintToChatAll ( " \x02[OSKnivHelg]: %s (admin) tasered %s (admin) and got %d points!", attacker_name, victim_name, 10 );
-    } else if ( isVictimAdmin ) {
-        PrintToChatAll ( " \x02[OSKnivHelg]: %s tasered %s (admin) and got %d points!", attacker_name, victim_name, 10 );
-    } else if ( isAttackerAdmin ) {
-        PrintToChatAll ( " \x02[OSKnivHelg]: %s (admin) tasered %s and got %d points!", attacker_name, victim_name, 5 );
+    if ( teamKill ) {
+        addKnifeEvent ( attacker_name, attacker_authid, victim_name, victim_authid, -points );
+        fixPoints ( victim_name, victim_authid, true, points );
+        fixPoints ( attacker_name, attacker_authid, false, points );
+        if ( isAttackerAdmin && isVictimAdmin ) {
+            PrintToChatAll ( " \x02[OSTaserHelg]: %s (admin) tasered teammate %s (admin) and got -%d points!", attacker_name, victim_name, points );
+        } else if ( isVictimAdmin ) {
+            PrintToChatAll ( " \x02[OSTaserHelg]: %s tasered teammate %s (admin) and got -%d points!", attacker_name, victim_name, points );
+        } else if ( isAttackerAdmin ) {
+            PrintToChatAll ( " \x02[OSTaserHelg]: %s (admin) tasered teammate %s and got -%d points!", attacker_name, victim_name, points );
+        } else {
+            PrintToChatAll ( " \x02[OSTaserHelg]: %s tasered teammate %s and got -%d points!", attacker_name, victim_name, points );
+        }
     } else {
-        PrintToChatAll ( " \x02[OSKnivHelg]: %s tasered %s and got %d points!", attacker_name, victim_name, 5 );
+        addKnifeEvent ( attacker_name, attacker_authid, victim_name, victim_authid, points );
+        fixPoints ( attacker_name, attacker_authid, true, points );
+        fixPoints ( victim_name, victim_authid, false, points );
+        if ( isAttackerAdmin && isVictimAdmin ) {
+            PrintToChatAll ( " \x02[OSTaserHelg]: %s (admin) tasered %s (admin) and got %d points!", attacker_name, victim_name, points );
+        } else if ( isVictimAdmin ) {
+            PrintToChatAll ( " \x02[OSTaserHelg]: %s tasered %s (admin) and got %d points!", attacker_name, victim_name, points );
+        } else if ( isAttackerAdmin ) {
+            PrintToChatAll ( " \x02[OSTaserHelg]: %s (admin) tasered %s and got %d points!", attacker_name, victim_name, points );
+        } else {
+            PrintToChatAll ( " \x02[OSTaserHelg]: %s tasered %s and got %d points!", attacker_name, victim_name, points );
+        }
     }
 }
 
@@ -89,7 +117,7 @@ public void Event_PlayerDeath ( Event event, const char[] name, bool dontBroadca
 /* END of EVENTS */
 
 /* COMMANDS*/
-public Action Command_TaserTop ( int client, int args ) {
+public Action Command_KnifeTop ( int client, int args ) {
     checkConnection ( );
     DBStatement stmt;
     char name[64];
@@ -97,14 +125,14 @@ public Action Command_TaserTop ( int client, int args ) {
     char sid[32];
     int points;
     int i;
-    if ( ( stmt = SQL_PrepareQuery ( knivhelg, "select name,steamid,points from userstats order by points desc limit 10;", error, sizeof(error) ) ) == null ) {
-        SQL_GetError ( knivhelg, error, sizeof(error));
+    if ( ( stmt = SQL_PrepareQuery ( taserhelg, "select name,steamid,points from userstats order by points desc limit 10;", error, sizeof(error) ) ) == null ) {
+        SQL_GetError ( taserhelg, error, sizeof(error));
         PrintToServer("[OSTaserHelg]: Failed to prepare query[0x07] (error: %s)", error);
         return Plugin_Handled;
     }
 
     if ( ! SQL_Execute ( stmt ) ) {
-        SQL_GetError ( knivhelg, error, sizeof(error));
+        SQL_GetError ( taserhelg, error, sizeof(error));
         PrintToServer("[OSTaserHelg]: Failed to query[0x08] (error: %s)", error);
         return Plugin_Handled;
     }
@@ -120,9 +148,9 @@ public Action Command_TaserTop ( int client, int args ) {
         SQL_FetchString ( stmt, 1, sid, sizeof(sid) );
         points = SQL_FetchInt ( stmt, 2 );
         if ( StrContains ( steamid, sid, false ) ) {
-            PrintToChat ( client, " \x04- %d. %s: %dp", i, name, points );
+            PrintToChat ( client, " \x04[OSTaserHelg]: %d. %s: %dp", i, name, points );
         } else {
-            PrintToChat ( client, " \x04- \x09%d. %s: %dp", i, name, points );
+            PrintToChat ( client, " \x04[OSTaserHelg]: \x09%d. %s: %dp", i, name, points );
         }
         i++;
     }
@@ -135,14 +163,14 @@ public Action Command_TaserTop ( int client, int args ) {
 public void fetchAdminStr ( ) {
     char buf[32];
     DBStatement stmt;
-    if ( ( stmt = SQL_PrepareQuery ( knivhelg, "select steamid from admin;", error, sizeof(error) ) ) == null ) {
-        SQL_GetError ( knivhelg, error, sizeof(error));
+    if ( ( stmt = SQL_PrepareQuery ( taserhelg, "select steamid from admin;", error, sizeof(error) ) ) == null ) {
+        SQL_GetError ( taserhelg, error, sizeof(error));
         PrintToServer("[OSTaserHelg]: Failed to prepare query[0x09] (error: %s)", error);
         return;
     }
 
     if ( ! SQL_Execute ( stmt ) ) {
-        SQL_GetError ( knivhelg, error, sizeof(error));
+        SQL_GetError ( taserhelg, error, sizeof(error));
         PrintToServer("[OSTaserHelg]: Failed to query[0x10] (error: %s)", error);
         return;
     }
@@ -158,59 +186,38 @@ public void fetchAdminStr ( ) {
     }
 }
 
-public void incPoints ( char name[64], char authid[32], bool isVictimAdmin ) {
+public void fixPoints ( char name[64], char authid[32], bool increase, int points ) {
     checkConnection ();
     char query[255];
     DBStatement stmt;
-    int points = (isVictimAdmin?10:5);
-        
-    Format ( query, sizeof(query), "insert into userstats (name,steamid,points) values (?,?,?) on duplicate key update points = points + ?;" );
-    if ( ( stmt = SQL_PrepareQuery ( knivhelg, query, error, sizeof(error) ) ) == null ) {
-        SQL_GetError ( knivhelg, error, sizeof(error));
+    if ( increase ) {
+        Format ( query, sizeof(query), "insert into userstats (name,steamid,points) values (?,?,?) on duplicate key update points = points + ?;" );
+    } else {
+        Format ( query, sizeof(query), "insert into userstats (name,steamid,points) values (?,?,?) on duplicate key update points = points - ?;" );
+    }
+    if ( ( stmt = SQL_PrepareQuery ( taserhelg, query, error, sizeof(error) ) ) == null ) {
+        SQL_GetError ( taserhelg, error, sizeof(error));
         PrintToServer("[OSTaserHelg]: Failed to prepare query[0x02] (error: %s)", error);
         return;
     }
     SQL_BindParamString ( stmt, 0, name, false );
     SQL_BindParamString ( stmt, 1, authid, false );
-    SQL_BindParamInt ( stmt, 2, points );
+    if ( increase ) {
+        SQL_BindParamInt ( stmt, 2, points );
+    } else {
+        SQL_BindParamInt ( stmt, 2, -points );
+    }
     SQL_BindParamInt ( stmt, 3, points );
 
     if ( ! SQL_Execute ( stmt ) ) {
-        SQL_GetError ( knivhelg, error, sizeof(error));
+        SQL_GetError ( taserhelg, error, sizeof(error));
         PrintToServer("[OSTaserHelg]: Failed to query[0x03] (error: %s)", error);
         return;
     }
-
     if ( stmt != null ) {
         delete stmt;
     }
-}
-public void decPoints ( char name[64], char authid[32], bool isVictimAdmin ) {
-    checkConnection ();
-    char query[255];
-    DBStatement stmt;
-    int points = (isVictimAdmin?10:5);
-         
-    Format ( query, sizeof(query), "insert into userstats (name,steamid,points) values (?,?,?) on duplicate key update points = points - ?;" );
-    if ( ( stmt = SQL_PrepareQuery ( knivhelg, query, error, sizeof(error) ) ) == null ) {
-        SQL_GetError ( knivhelg, error, sizeof(error));
-        PrintToServer("[OSTaserHelg]: Failed to prepare query[0x02] (error: %s)", error);
-        return;
-    }
-    SQL_BindParamString ( stmt, 0, name, false );
-    SQL_BindParamString ( stmt, 1, authid, false );
-    SQL_BindParamInt ( stmt, 2, -points );
-    SQL_BindParamInt ( stmt, 3, points );
 
-    if ( ! SQL_Execute ( stmt ) ) {
-        SQL_GetError ( knivhelg, error, sizeof(error));
-        PrintToServer("[OSTaserHelg]: Failed to query[0x03] (error: %s)", error);
-        return;
-    }
-
-    if ( stmt != null ) {
-        delete stmt;
-    }
 }
 
 public bool isPlayerAdmin ( char authid[32] ) {
@@ -231,12 +238,11 @@ public bool isValidSteamID ( char authid[32] ) {
     return false;
 }
 
-public void addKnifeEvent ( char attacker_name[64], char attacker_authid[32], char victim_name[64], char victim_authid[32], int isAdmin ) {
+public void addKnifeEvent ( char attacker_name[64], char attacker_authid[32], char victim_name[64], char victim_authid[32], int points ) {
     checkConnection ( )
     DBStatement stmt;
-    int points = (isAdmin?10:5);
-    if ( ( stmt = SQL_PrepareQuery ( knivhelg, "insert into event (stamp,attacker,attackerid,victim,victimid,points) values (now(),?,?,?,?,?)", error, sizeof(error) ) ) == null ) {
-        SQL_GetError ( knivhelg, error, sizeof(error) );
+    if ( ( stmt = SQL_PrepareQuery ( taserhelg, "insert into event (stamp,attacker,attackerid,victim,victimid,points) values (now(),?,?,?,?,?)", error, sizeof(error) ) ) == null ) {
+        SQL_GetError ( taserhelg, error, sizeof(error) );
         PrintToServer("[OSTaserHelg]: Failed to prepare query[0x01] (error: %s)", error);
         return;
     }
@@ -246,7 +252,7 @@ public void addKnifeEvent ( char attacker_name[64], char attacker_authid[32], ch
     SQL_BindParamString ( stmt, 3, victim_authid, false );
     SQL_BindParamInt ( stmt, 4, points );
     if ( ! SQL_Execute ( stmt ) ) {
-        SQL_GetError ( knivhelg, error, sizeof(error));
+        SQL_GetError ( taserhelg, error, sizeof(error));
         PrintToServer("[OSTaserHelg]: Failed to query[0x02] (error: %s)", error);
     }
     if ( stmt != null ) {
@@ -255,19 +261,27 @@ public void addKnifeEvent ( char attacker_name[64], char attacker_authid[32], ch
 }
  
 public void databaseConnect ( ) {
-    if ( ( knivhelg = SQL_Connect ( "knivhelg", true, error, sizeof(error) ) ) != null ) {
-        PrintToServer ( "[OSTaserHelg]: Connected to knivhelg database!" );
+    if ( ( taserhelg = SQL_Connect ( "taserhelg", true, error, sizeof(error) ) ) != null ) {
+        PrintToServer ( "[OSTaserHelg]: Connected to taserhelg database!" );
     } else {
-        PrintToServer ( "[OSTaserHelg]: Failed to connect to knivhelg database! (error: %s)", error );
+        PrintToServer ( "[OSTaserHelg]: Failed to connect to taserhelg database! (error: %s)", error );
     }
 }
 
 public void checkConnection ( ) {
-    if ( knivhelg == null || knivhelg == INVALID_HANDLE ) {
+    if ( taserhelg == null || taserhelg == INVALID_HANDLE ) {
         databaseConnect ( );
     }
 }
  
+/* IS TEAMKILL */
+public bool isTeamKill ( int attacker, int victim ) {
+    if ( GetClientTeam ( attacker ) == GetClientTeam ( victim ) ) {
+        return true;
+    }
+    return false;
+}
+
 /* return true if player is real */
 public bool playerIsReal ( int player ) {
     return ( player > 0 &&
@@ -282,3 +296,4 @@ public bool isWarmup ( ) {
     } 
     return false;
 }
+ 
