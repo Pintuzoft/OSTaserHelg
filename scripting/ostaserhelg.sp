@@ -20,7 +20,7 @@ public Plugin myinfo = {
 public void OnPluginStart ( ) {
     HookEvent ( "player_death", Event_PlayerDeath );
     adminPointsEnabled = CreateConVar ( "ostaserhelg_admin_points_enabled", "1", "Enable admin points" );
-    RegConsoleCmd ( "sm_ktop", Command_KnifeTop, "Shows the top 10 knife kills" );
+    RegConsoleCmd ( "sm_ttop", Command_KnifeTop, "Shows the top 10 taser kills" );
     AutoExecConfig ( true, "ostaserhelg" );
 }
 
