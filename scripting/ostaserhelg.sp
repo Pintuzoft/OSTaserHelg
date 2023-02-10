@@ -69,9 +69,9 @@ public void Event_PlayerDeath ( Event event, const char[] name, bool dontBroadca
     GetClientAuthId ( attacker, AuthId_Steam2, attacker_authid, sizeof ( attacker_authid ) );
     
  
-    //if ( ! isValidSteamID ( victim_authid ) || ! isValidSteamID ( attacker_authid ) ) {
-    //    return;
-    //}
+    if ( ! isValidSteamID ( victim_authid ) || ! isValidSteamID ( attacker_authid ) ) {
+        return;
+    }
 
     teamKill = isTeamKill ( attacker, victim );
 
@@ -81,8 +81,6 @@ public void Event_PlayerDeath ( Event event, const char[] name, bool dontBroadca
 
     isAttackerAdmin = isPlayerAdmin ( attacker_authid );
     isVictimAdmin = isPlayerAdmin ( victim_authid );
-
-
     
     if ( teamKill ) {
         addKnifeEvent ( attacker_name, attacker_authid, victim_name, victim_authid, -points );
