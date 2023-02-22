@@ -81,34 +81,15 @@ public void Event_PlayerDeath ( Event event, const char[] name, bool dontBroadca
 
     isAttackerAdmin = isPlayerAdmin ( attacker_authid );
     isVictimAdmin = isPlayerAdmin ( victim_authid );
-    
+
+    addTaserEvent ( attacker_name, attacker_authid, victim_name, victim_authid, points, teamKill );
     if ( teamKill ) {
-        addKnifeEvent ( attacker_name, attacker_authid, victim_name, victim_authid, -points );
         fixPoints ( victim_name, victim_authid, true, points );
-        fixPoints ( attacker_name, attacker_authid, false, points );
-        if ( isAttackerAdmin && isVictimAdmin ) {
-            PrintToChatAll ( " \x04[OSTaserHelg]\x01: \x06%s \x08(admin) \x01tasered teammate \x07%s \x08(admin) \x01and got \x07-%d \x01points!", attacker_name, victim_name, points );
-        } else if ( isVictimAdmin ) {
-            PrintToChatAll ( " \x04[OSTaserHelg]\x01: \x06%s tasered \x01teammate \x07%s \x08(admin) \x01and got \x07-%d \x01points!", attacker_name, victim_name, points );
-        } else if ( isAttackerAdmin ) {
-            PrintToChatAll ( " \x04[OSTaserHelg]\x01: \x06%s \x08(admin) \x01tasered teammate \x07%s \x01and got \x07-%d \x01points!", attacker_name, victim_name, points );
-        } else {
-            PrintToChatAll ( " \x04[OSTaserHelg]\x01: \x06%s \x01tasered teammate \x07%s \x01and got \x07-%d \x01points!", attacker_name, victim_name, points );
-        }
+        fixPoints ( attacker_name, attacker_authid, false, points );        
     } else {
-        addKnifeEvent ( attacker_name, attacker_authid, victim_name, victim_authid, points );
         fixPoints ( attacker_name, attacker_authid, true, points );
-        fixPoints ( victim_name, victim_authid, false, points );
-        if ( isAttackerAdmin && isVictimAdmin ) {
-            PrintToChatAll ( " \x04[OSTaserHelg]\x01: \x06%s \x08(admin) \x01tasered \x07%s \x08(admin) \x01and got \x04%d \x01points!", attacker_name, victim_name, points );
-        } else if ( isVictimAdmin ) {
-            PrintToChatAll ( " \x04[OSTaserHelg]\x01: \x06%s \x01tasered \x07%s \x08(admin) \x01and got \x04%d \x01points!", attacker_name, victim_name, points );
-        } else if ( isAttackerAdmin ) {
-            PrintToChatAll ( " \x04[OSTaserHelg]\x01: \x06%s \x08(admin) \x01tasered \x07%s \x01and got \x04%d \x01points!", attacker_name, victim_name, points );
-        } else {
-            PrintToChatAll ( " \x04[OSTaserHelg]\x01: \x06%s \x01tasered \x07%s \x01and got \x04%d \x01points!", attacker_name, victim_name, points );
-        }
     }
+    PrintToChatCustom ( attacker_name, isAttackerAdmin, victim_name, isVictimAdmin, points, teamKill );
 }
 
 
@@ -146,9 +127,9 @@ public Action Command_KnifeTop ( int client, int args ) {
         SQL_FetchString ( stmt, 1, sid, sizeof(sid) );
         points = SQL_FetchInt ( stmt, 2 );
         if ( StrContains ( steamid, sid, false ) ) {
-            PrintToChat ( client, " \x04[OSTaserHelg]: %d. %s: %dp", i, name, points );
+            PrintToChat ( client, "  \x04%d. %s: %dp", i, name, points );
         } else {
-            PrintToChat ( client, " \x04[OSTaserHelg]: \x09%d. %s: %dp", i, name, points );
+            PrintToChat ( client, "  \x09%d. %s: %dp", i, name, points );
         }
         i++;
     }
@@ -158,6 +139,29 @@ public Action Command_KnifeTop ( int client, int args ) {
 
 /* METHODS */
  
+
+public void PrintToChatCustom ( char attacker[64], bool isAttackerAdmin, char victim[64], bool isVictimAdmin, int points, bool isTeamKill ) {
+    char aAdmin[16];
+    char vAdmin[16];
+    if ( isAttackerAdmin ) {
+        aAdmin = "\x08(admin) ";
+    } else {
+        aAdmin = "";
+    }
+
+    if ( isVictimAdmin ) {
+        vAdmin = "\x08(admin) ";
+    } else {
+        vAdmin = "";
+    }
+
+    if ( isTeamKill ) {
+        PrintToChatAll ( " \x04[OSTaserHelg]\x01: \x07%s %s\x01(-%dp) taser-TeamKilled \x06%s %s \x01(%dp)", attacker, aAdmin, points, victim, vAdmin, points );        
+    } else { 
+        PrintToChatAll ( " \x04[OSTaserHelg]\x01: \x06%s %s\x01(%dp) tasered \x07%s %s", attacker, aAdmin, points, victim, vAdmin );
+    }
+}
+
 public void fetchAdminStr ( ) {
     char buf[32];
     DBStatement stmt;
@@ -236,10 +240,10 @@ public bool isValidSteamID ( char authid[32] ) {
     return false;
 }
 
-public void addKnifeEvent ( char attacker_name[64], char attacker_authid[32], char victim_name[64], char victim_authid[32], int points ) {
+public void addTaserEvent ( char attacker_name[64], char attacker_authid[32], char victim_name[64], char victim_authid[32], int points, bool isTeamKill ) {
     checkConnection ( )
     DBStatement stmt;
-    if ( ( stmt = SQL_PrepareQuery ( taserhelg, "insert into event (stamp,attacker,attackerid,victim,victimid,points) values (now(),?,?,?,?,?)", error, sizeof(error) ) ) == null ) {
+    if ( ( stmt = SQL_PrepareQuery ( taserhelg, "insert into event (stamp,attacker,attackerid,victim,victimid,points,type) values (now(),?,?,?,?,?,?)", error, sizeof(error) ) ) == null ) {
         SQL_GetError ( taserhelg, error, sizeof(error) );
         PrintToServer("[OSTaserHelg]: Failed to prepare query[0x01] (error: %s)", error);
         return;
@@ -249,6 +253,11 @@ public void addKnifeEvent ( char attacker_name[64], char attacker_authid[32], ch
     SQL_BindParamString ( stmt, 2, victim_name, false );
     SQL_BindParamString ( stmt, 3, victim_authid, false );
     SQL_BindParamInt ( stmt, 4, points );
+    if ( isTeamKill ) {
+        SQL_BindParamInt ( stmt, 5, 1 );
+    } else {
+        SQL_BindParamInt ( stmt, 5, 0 );
+    }
     if ( ! SQL_Execute ( stmt ) ) {
         SQL_GetError ( taserhelg, error, sizeof(error));
         PrintToServer("[OSTaserHelg]: Failed to query[0x02] (error: %s)", error);
@@ -294,4 +303,3 @@ public bool isWarmup ( ) {
     } 
     return false;
 }
- 
