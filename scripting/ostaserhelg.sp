@@ -13,7 +13,7 @@ public Plugin myinfo = {
 	name = "OSTaserHelg",
 	author = "Pintuz",
 	description = "OldSwedes Taser en admin helg plugin",
-	version = "0.01",
+	version = "0.02",
 	url = "https://github.com/Pintuzoft/OSTaserHelg"
 }
 
